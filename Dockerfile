@@ -1,61 +1,57 @@
-FROM library/tomcat:7-jre8
+FROM centos:7.5.1804
+LABEL maintainer "wojiushixiaobai"
+WORKDIR /opt
 
-ENV ARCH=amd64 \
-  GUAC_VER=0.9.14 \
-  GUACAMOLE_HOME=/app/guacamole
+RUN yum -y update && \
+    yum -y localinstall --nogpgcheck https://download1.rpmfusion.org/free/el/rpmfusion-free-release-7.noarch.rpm https://download1.rpmfusion.org/nonfree/el/rpmfusion-nonfree-release-7.noarch.rpm && \
+    rpm --import http://li.nux.ro/download/nux/RPM-GPG-KEY-nux.ro && \
+    rpm -Uvh http://li.nux.ro/download/nux/dextop/el7/x86_64/nux-dextop-release-0-1.el7.nux.noarch.rpm && \
+    yum install -y git gcc java-1.8.0-openjdk libtool && \
+    yum install -y cairo-devel libjpeg-turbo-devel libpng-devel uuid-devel && \
+    yum install -y ffmpeg-devel freerdp-devel pango-devel libssh2-devel libtelnet-devel libvncserver-devel pulseaudio-libs-devel openssl-devel libvorbis-devel libwebp-devel && \
+    yum clean all && \
+    rm -rf /var/cache/yum/*
 
-# Apply the s6-overlay
-COPY s6-overlay-${ARCH}.tar.gz .
+COPY docker-guacamole docker-guacamole
+COPY entrypoint.sh /bin/entrypoint.sh
 
-#RUN curl -SLO "https://github.com/just-containers/s6-overlay/releases/download/v1.20.0.0/s6-overlay-${ARCH}.tar.gz" \
-RUN tar -xzf s6-overlay-${ARCH}.tar.gz -C / \
-  && tar -xzf s6-overlay-${ARCH}.tar.gz -C /usr ./bin \
-  && rm -rf s6-overlay-${ARCH}.tar.gz \
-  && mkdir -p ${GUACAMOLE_HOME} \
-    ${GUACAMOLE_HOME}/lib \
-    ${GUACAMOLE_HOME}/extensions
+RUN yum install -y wget make && \
+    wget http://mirror.bit.edu.cn/apache/tomcat/tomcat-8/v8.5.34/bin/apache-tomcat-8.5.34.tar.gz && \
+    mkdir /config && \
+    tar xf apache-tomcat-8.5.34.tar.gz -C /config && \
+    mv /config/apache-tomcat-8.5.34 /config/tomcat8 && \
+    sed -i 's/Connector port="8080"/Connector port="8081"/g' `grep 'Connector port="8080"' -rl /config/tomcat8/conf/server.xml` && \
+    sed -i 's/FINE/WARNING/g' `grep 'FINE' -rl /config/tomcat8/conf/logging.properties` && \
+    echo "java.util.logging.ConsoleHandler.encoding = UTF-8" >> /config/tomcat8/conf/logging.properties && \
+    mkdir -p /config/guacamole \
+    /config/guacamole/lib \
+    /config/guacamole/extensions && \
+    cd /opt/docker-guacamole && \
+    tar -xzf guacamole-server-0.9.14.tar.gz && \
+    cd guacamole-server-0.9.14 && \
+    autoreconf -fi && \
+    ./configure --with-init-dir=/etc/init.d && \
+    make && \
+    make install && \
+    cd .. && \
+    rm -rf guacamole-server-0.9.14.tar.gz guacamole-server-0.9.14 && \
+    ldconfig && \
+    rm -rf /config/tomcat8/webapps/* && \
+    cp guacamole-0.9.14.war /config/tomcat8/webapps/ROOT.war && \
+    cp guacamole-auth-jumpserver-0.9.14.jar /config/guacamole/extensions && \
+    cp root/app/guacamole/guacamole.properties /config/guacamole/ && \
+    rm -rf /opt/* && \
+    yum clean all && \
+    rm -rf /var/cache/yum/* && \
+    chmod +x /bin/entrypoint.sh
 
-WORKDIR ${GUACAMOLE_HOME}
+copy readme.txt readme.txt
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    libcairo2-dev libjpeg62-turbo-dev libpng-dev \
-    libossp-uuid-dev libavcodec-dev libavutil-dev \
-    libswscale-dev libfreerdp-dev libpango1.0-dev \
-    libssh2-1-dev libtelnet-dev libvncserver-dev \
-    libpulse-dev libssl-dev libvorbis-dev libwebp-dev \
-    ghostscript  \
-  && rm -rf /var/lib/apt/lists/*
+ENV JUMPSERVER_KEY_DIR=/config/guacamole/keys \
+    GUACAMOLE_HOME=/config/guacamole \
+    JUMPSERVER_SERVER=http://127.0.0.1:8080
 
-# Link FreeRDP to where guac expects it to be
-RUN [ "$ARCH" = "armhf" ] && ln -s /usr/local/lib/freerdp /usr/lib/arm-linux-gnueabihf/freerdp || exit 0
-RUN [ "$ARCH" = "amd64" ] && ln -s /usr/local/lib/freerdp /usr/lib/x86_64-linux-gnu/freerdp || exit 0
+VOLUME /config/guacamole/keys
 
-# Install guacamole-server
-COPY guacamole-server-${GUAC_VER}.tar.gz .
-# RUN curl -SLO "https://sourceforge.net/projects/guacamole/files/current/source/guacamole-server-${GUAC_VER}.tar.gz" \
-RUN tar -xzf guacamole-server-${GUAC_VER}.tar.gz \
-  && cd guacamole-server-${GUAC_VER} \
-  && ./configure \
-  && make -j$(getconf _NPROCESSORS_ONLN) \
-  && make install \
-  && cd .. \
-  && rm -rf guacamole-server-${GUAC_VER}.tar.gz guacamole-server-${GUAC_VER} \
-  && ldconfig
-
-# Install guacamole-client and postgres auth adapter
-RUN rm -rf ${CATALINA_HOME}/webapps/ROOT
-#  && curl -SLo ${CATALINA_HOME}/webapps/ROOT.war "https://sourceforge.net/projects/guacamole/files/current/binary/guacamole-${GUAC_VER}.war"
-COPY guacamole-${GUAC_VER}.war ${CATALINA_HOME}/webapps/ROOT.war
-
-ENV PATH=/usr/lib/postgresql/${PG_MAJOR}/bin:$PATH
-ENV GUACAMOLE_HOME=/config/guacamole
-RUN mkdir -p ${GUACAMOLE_HOME}/extensions 
-# curl -SLo ${GUACAMOLE_HOME}/extensions/guacamole-auth-jumpserver-${GUAC_VER}.jar "https://s3.cn-north-1.amazonaws.com.cn/tempfiles/guacamole-jumpserver/guacamole-auth-jumpserver-${GUAC_VER}.jar"
-COPY guacamole-auth-jumpserver-${GUAC_VER}.jar ${GUACAMOLE_HOME}/extensions/guacamole-auth-jumpserver-${GUAC_VER}.jar
-
-WORKDIR /config
-
-COPY root /
-
-ENTRYPOINT [ "/init" ]
+EXPOSE 8081
+ENTRYPOINT ["entrypoint.sh"]
