@@ -31,6 +31,7 @@ COPY readme.txt readme.txt
 
 ENV JUMPSERVER_KEY_DIR=/config/guacamole/keys \
     GUACAMOLE_HOME=/config/guacamole \
+    JUMPSERVER_ENABLE_DRIVE=true \
     JUMPSERVER_SERVER=http://127.0.0.1:8080
 
 VOLUME /config/guacamole/keys
