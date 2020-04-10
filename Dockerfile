@@ -17,6 +17,8 @@ RUN tar -xzf s6-overlay-${ARCH}.tar.gz -C / \
 
 WORKDIR ${GUACAMOLE_HOME}
 
+RUN sed -i  's/deb.debian.org/mirrors.163.com/g' /etc/apt/sources.list
+RUN sed -i  's/security.debian.org/mirrors.163.com/g' /etc/apt/sources.list
 # Install dependencies
 RUN apt-get update && apt-get install -y \
     libcairo2-dev libjpeg62-turbo-dev libpng-dev \
