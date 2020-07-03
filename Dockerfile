@@ -1,6 +1,7 @@
 FROM library/tomcat:9-jre8
 
 ENV ARCH=amd64 \
+  GUACD_VER=1.2.0 \
   GUAC_VER=1.0.0 \
   GUACAMOLE_HOME=/app/guacamole
 
@@ -17,15 +18,14 @@ RUN tar -xzf s6-overlay-${ARCH}.tar.gz -C / \
 
 WORKDIR ${GUACAMOLE_HOME}
 
-RUN sed -i  's/deb.debian.org/mirrors.163.com/g' /etc/apt/sources.list
-RUN sed -i  's/security.debian.org/mirrors.163.com/g' /etc/apt/sources.list
+RUN curl -o /etc/apt/sources.list "https://mirrors.163.com/.help/sources.list.stretch"
 # Install dependencies
 RUN apt-get update && apt-get install -y \
     libcairo2-dev libjpeg62-turbo-dev libpng-dev \
     libossp-uuid-dev libavcodec-dev libavutil-dev \
-    libswscale-dev libfreerdp-dev libpango1.0-dev \
+    libswscale-dev freerdp2-dev libfreerdp-client2-2 libpango1.0-dev \
     libssh2-1-dev libtelnet-dev libvncserver-dev \
-    libpulse-dev libssl-dev libvorbis-dev libwebp-dev \
+    libpulse-dev libssl-dev libvorbis-dev libwebp-dev libwebsockets-dev \
     ghostscript  \
   && rm -rf /var/lib/apt/lists/*
 
@@ -34,26 +34,24 @@ RUN [ "$ARCH" = "armhf" ] && ln -s /usr/local/lib/freerdp /usr/lib/arm-linux-gnu
 RUN [ "$ARCH" = "amd64" ] && ln -s /usr/local/lib/freerdp /usr/lib/x86_64-linux-gnu/freerdp || exit 0
 
 # Install guacamole-server
-COPY guacamole-server-${GUAC_VER}.tar.gz .
-# RUN curl -SLO "http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VER}/source/guacamole-server-${GUAC_VER}.tar.gz" \
-RUN tar -xzf guacamole-server-${GUAC_VER}.tar.gz \
-  && cd guacamole-server-${GUAC_VER} \
+COPY guacamole-server-${GUACD_VER}.tar.gz .
+RUN tar -xzf guacamole-server-${GUACD_VER}.tar.gz \
+  && cd guacamole-server-${GUACD_VER} \
   && ./configure \
   && make -j$(getconf _NPROCESSORS_ONLN) \
   && make install \
   && cd .. \
-  && rm -rf guacamole-server-${GUAC_VER}.tar.gz guacamole-server-${GUAC_VER} \
+  && rm -rf guacamole-server-${GUACD_VER}.tar.gz guacamole-server-${GUACD_VER} \
   && ldconfig
 
 # Install guacamole-client and postgres auth adapter
 RUN rm -rf ${CATALINA_HOME}/webapps/ROOT
-#  && curl -SLo ${CATALINA_HOME}/webapps/ROOT.war "https://sourceforge.net/projects/guacamole/files/current/binary/guacamole-${GUAC_VER}.war"
+
 COPY guacamole-${GUAC_VER}.war ${CATALINA_HOME}/webapps/ROOT.war
 
 ENV PATH=/usr/lib/postgresql/${PG_MAJOR}/bin:$PATH
 ENV GUACAMOLE_HOME=/config/guacamole
 RUN mkdir -p ${GUACAMOLE_HOME}/extensions 
-# curl -SLo ${GUACAMOLE_HOME}/extensions/guacamole-auth-jumpserver-${GUAC_VER}.jar "https://s3.cn-north-1.amazonaws.com.cn/tempfiles/guacamole-jumpserver/guacamole-auth-jumpserver-${GUAC_VER}.jar"
 COPY guacamole-auth-jumpserver-${GUAC_VER}.jar ${GUACAMOLE_HOME}/extensions/guacamole-auth-jumpserver-${GUAC_VER}.jar
 
 # Install ssh-forward for support 
