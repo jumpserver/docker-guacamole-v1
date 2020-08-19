@@ -1,11 +1,9 @@
 FROM library/tomcat:9-jre8
 
-ARG NO_COPY=0
 ENV ARCH=amd64 \
   GUACD_VER=1.2.0 \
   GUAC_VER=1.0.0 \
-  GUACAMOLE_HOME=/app/guacamole \
-  NO_COPY=$NO_COPY
+  GUACAMOLE_HOME=/app/guacamole
 
 # Apply the s6-overlay
 COPY s6-overlay-${ARCH}.tar.gz .
@@ -37,11 +35,6 @@ RUN [ "$ARCH" = "amd64" ] && ln -s /usr/local/lib/freerdp /usr/lib/x86_64-linux-
 
 # Install guacamole-server
 COPY guacamole-server-${GUACD_VER}.tar.gz .
-COPY guacamole-server-${GUACD_VER}-nocopy.tar.gz .
-RUN if [ "$NO_COPY" = "1" ];then \
-        mv guacamole-server-${GUACD_VER}-nocopy.tar.gz guacamole-server-${GUACD_VER}.tar.gz \
-        && echo "==========> Using Nocopy tar bar"; \
-    fi
 RUN tar -xzf guacamole-server-${GUACD_VER}.tar.gz \
   && cd guacamole-server-${GUACD_VER} \
   && ./configure \
