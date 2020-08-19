@@ -1,9 +1,11 @@
 FROM library/tomcat:9-jre8
 
+ARG NO_COPY=0
 ENV ARCH=amd64 \
   GUACD_VER=1.2.0 \
   GUAC_VER=1.0.0 \
-  GUACAMOLE_HOME=/app/guacamole
+  GUACAMOLE_HOME=/app/guacamole \
+  NO_COPY=$NO_COPY
 
 # Apply the s6-overlay
 COPY s6-overlay-${ARCH}.tar.gz .
@@ -35,8 +37,14 @@ RUN [ "$ARCH" = "amd64" ] && ln -s /usr/local/lib/freerdp /usr/lib/x86_64-linux-
 
 # Install guacamole-server
 COPY guacamole-server-${GUACD_VER}.tar.gz .
-RUN tar -xzf guacamole-server-${GUACD_VER}.tar.gz \
-  && cd guacamole-server-${GUACD_VER} \
+RUN tar -xzf guacamole-server-${GUACD_VER}.tar.gz
+RUN if [ "$NO_COPY" = "1" ];then \
+        cd guacamole-server-${GUACD_VER} \
+        && sed -i 's@guac_rdp_clipboard_load_plugin.*@guac_client_log(client, GUAC_LOG_INFO, "Copy paste has been disabled");@' ./src/protocols/rdp/rdp.c \
+        && echo "Disable copy and paste"; \
+    fi
+
+RUN cd guacamole-server-${GUACD_VER} \
   && ./configure \
   && make -j$(getconf _NPROCESSORS_ONLN) \
   && make install \
